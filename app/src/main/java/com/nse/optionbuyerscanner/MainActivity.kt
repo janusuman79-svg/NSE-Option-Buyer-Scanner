@@ -1,5 +1,4 @@
-package com.nse.optionbuyerscanner
-import android.content.*
+@Composable fun Field(label:String,v:String,secret:Boolean=false,on:(String)->Unit){OutlinedTextField(v,on,{},{},label={Text(label)},visualTransformation=if(secret)PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,modifier=Modifier.fillMaxWidth())}import android.content.*
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,5 +21,22 @@ class MainActivity:ComponentActivity(){ override fun onCreate(b:Bundle?){super.o
    Button(onClick={scope.launch{store.save(s)}}){Text("Save settings")}; Button(onClick={running=!running;if(running)startForegroundService(Intent(this@MainActivity,ScannerService::class.java))else stopService(Intent(this@MainActivity,ScannerService::class.java))}){Text(if(running)"Stop scanner" else "Start scanner")}
    HorizontalDivider(); Text("Risk guardrails",style=MaterialTheme.typography.titleMedium); Text("No auto-order placement in Build 1. Signals should be paper-tested and validated before live use. Stops are based on the underlying, not only option premium.")
   }}}
- @Composable fun Field(label:String,v:String,secret:Boolean=false,on:(String)->Unit){OutlinedTextField(v,on,{},{},label={Text(label)},visualTransformation=if(secret)PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,modifier=Modifier.fillMaxWidth())}
+ @Composable
+ fun Field(
+     label: String,
+     v: String,
+     secret: Boolean = false,
+     on: (String) -> Unit
+ ) {
+     OutlinedTextField(
+         value = v,
+         onValueChange = on,
+         label = { Text(label) },
+         visualTransformation = if (secret)
+             PasswordVisualTransformation()
+         else
+             androidx.compose.ui.text.input.VisualTransformation.None,
+         modifier = Modifier.fillMaxWidth()
+     )
+ }
 }
