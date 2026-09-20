@@ -18,7 +18,7 @@ import kotlin.math.pow
 data class AngelSession(val jwt:String,val refresh:String,val feed:String)
 data class AngelInstrument(val token:String,val symbol:String,val name:String)
 data class AngelOption(val token:String,val symbol:String,val name:String,val expiry:String,val strike:Double,val optionType:String,val lotSize:Int,val rawStrike:String="")
-data class OptionQuote(val ltp:Double,val volume:Double,val openInterest:Double)
+data class OptionQuote(val ltp:Double,val volume:Double,val openInterest:Double,val bestBid:Double=0.0,val bestAsk:Double=0.0)
 
 class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
  private val base="https://apiconnect.angelone.in"
@@ -69,7 +69,13 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
    val j=JSONObject(raw);if(!j.optBoolean("status"))error(j.optString("message","Option quote failed"))
    val f=j.optJSONObject("data")?.optJSONArray("fetched")?:return@use OptionQuote(0.0,0.0,0.0)
    if(f.length()==0)return@use OptionQuote(0.0,0.0,0.0)
-   val q=f.getJSONObject(0);OptionQuote(q.optDouble("ltp"),q.optDouble("tradeVolume",q.optDouble("volume",0.0)),q.optDouble("opnInterest",0.0))
+   val q=f.getJSONObject(0)
+   val depth=q.optJSONObject("depth")
+   val buy=depth?.optJSONArray("buy")
+   val sell=depth?.optJSONArray("sell")
+   val bid=if(buy!=null&&buy.length()>0)buy.optJSONObject(0)?.optDouble("price",0.0)?:0.0 else 0.0
+   val ask=if(sell!=null&&sell.length()>0)sell.optJSONObject(0)?.optDouble("price",0.0)?:0.0 else 0.0
+   OptionQuote(q.optDouble("ltp"),q.optDouble("tradeVolume",q.optDouble("volume",0.0)),q.optDouble("opnInterest",0.0),bid,ask)
   }
  }
  suspend fun candles(s:AppSettings,session:AngelSession,token:String)=withContext(Dispatchers.IO){
