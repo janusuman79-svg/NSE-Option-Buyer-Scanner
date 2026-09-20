@@ -9,6 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -52,10 +53,11 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
   http.newCall(Request.Builder().url("$base/rest/secure/angelbroking/historical/v1/getCandleData").headers(h).post(body).build()).execute().use{r->
    val raw=r.body?.string().orEmpty();if(!r.isSuccessful)error("Candle HTTP ${r.code}")
    val j=JSONObject(raw);if(!j.optBoolean("status"))error(j.optString("message","Candle failed"));val a=j.optJSONArray("data")?:return@use emptyList()
-   List(a.length()){i->val q=a.getJSONArray(i);Candle(System.currentTimeMillis(),q.optDouble(1),q.optDouble(2),q.optDouble(3),q.optDouble(4),q.optDouble(5))}
+   List(a.length()){i->val q=a.getJSONArray(i);Candle(parseAngelTime(q.optString(0)),q.optDouble(1),q.optDouble(2),q.optDouble(3),q.optDouble(4),q.optDouble(5))}
   }
  }
 
+ private fun parseAngelTime(v:String):Long=try{OffsetDateTime.parse(v).toInstant().toEpochMilli()}catch(_:Exception){System.currentTimeMillis()}
  private fun headers(k:String)=Headers.Builder().add("Content-Type","application/json").add("Accept","application/json").add("X-UserType","USER").add("X-SourceID","WEB").add("X-ClientLocalIP","127.0.0.1").add("X-ClientPublicIP","127.0.0.1").add("X-MACAddress","00:00:00:00:00:00").add("X-PrivateKey",k.trim()).build()
  private fun totp(s:String):String{val key=b32(s.replace(" ","").uppercase());val c=System.currentTimeMillis()/30000;val b=ByteArray(8);var v=c;for(i in 7 downTo 0){b[i]=(v and 255).toByte();v=v ushr 8};val m=Mac.getInstance("HmacSHA1");m.init(SecretKeySpec(key,"HmacSHA1"));val h=m.doFinal(b);val o=h.last().toInt() and 15;val n=((h[o].toInt() and 127) shl 24)or((h[o+1].toInt() and 255)shl 16)or((h[o+2].toInt() and 255)shl 8)or(h[o+3].toInt() and 255);return(n%10.0.pow(6).toInt()).toString().padStart(6,'0')}
  private fun b32(s:String):ByteArray{val a="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";var buf=0;var bits=0;val o=ArrayList<Byte>();for(c in s.trimEnd('=')){val x=a.indexOf(c);require(x>=0){"Invalid TOTP secret"};buf=(buf shl 5)or x;bits+=5;if(bits>=8){bits-=8;o.add(((buf shr bits)and 255).toByte())}};return o.toByteArray()}
