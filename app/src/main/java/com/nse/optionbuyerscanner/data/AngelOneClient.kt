@@ -17,6 +17,8 @@ import kotlin.math.pow
 
 data class AngelSession(val jwt:String,val refresh:String,val feed:String)
 data class AngelInstrument(val token:String,val symbol:String,val name:String)
+data class AngelOption(val token:String,val symbol:String,val name:String,val expiry:String,val strike:Double,val optionType:String,val lotSize:Int)
+data class OptionQuote(val ltp:Double,val volume:Double,val openInterest:Double)
 
 class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
  private val base="https://apiconnect.angelone.in"
@@ -46,6 +48,30 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
   }
  }
 
+ suspend fun loadStockOptions()=withContext(Dispatchers.IO){
+  http.newCall(Request.Builder().url(master).build()).execute().use{r->
+   if(!r.isSuccessful)error("Instrument master HTTP ${r.code}")
+   val a=JSONArray(r.body?.string().orEmpty());val out=ArrayList<AngelOption>()
+   for(i in 0 until a.length()){val x=a.getJSONObject(i)
+    if(x.optString("exch_seg")=="NFO"&&x.optString("instrumenttype")=="OPTSTK"){
+     val sym=x.optString("symbol");val typ=when{sym.endsWith("CE")->"CE";sym.endsWith("PE")->"PE";else->""}
+     val raw=x.optDouble("strike",Double.NaN);val strike=if(raw.isFinite()&&raw>100000)raw/100.0 else raw
+     if(typ.isNotBlank()&&strike.isFinite()&&strike>0)out.add(AngelOption(x.optString("token"),sym,x.optString("name").uppercase(),x.optString("expiry"),strike,typ,x.optInt("lotsize",1)))
+    }
+   };out
+  }
+ }
+ suspend fun optionQuote(s:AppSettings,session:AngelSession,o:AngelOption)=withContext(Dispatchers.IO){
+  val body=JSONObject().put("mode","FULL").put("exchangeTokens",JSONObject().put("NFO",JSONArray().put(o.token))).toString().toRequestBody(JSON)
+  val h=headers(s.angelApiKey).newBuilder().add("Authorization","Bearer ${session.jwt}").build()
+  http.newCall(Request.Builder().url("$base/rest/secure/angelbroking/market/v1/quote/").headers(h).post(body).build()).execute().use{r->
+   val raw=r.body?.string().orEmpty();if(!r.isSuccessful)error("Option quote HTTP ${r.code}: ${raw.take(120)}")
+   val j=JSONObject(raw);if(!j.optBoolean("status"))error(j.optString("message","Option quote failed"))
+   val f=j.optJSONObject("data")?.optJSONArray("fetched")?:return@use OptionQuote(0.0,0.0,0.0)
+   if(f.length()==0)return@use OptionQuote(0.0,0.0,0.0)
+   val q=f.getJSONObject(0);OptionQuote(q.optDouble("ltp"),q.optDouble("tradeVolume",q.optDouble("volume",0.0)),q.optDouble("opnInterest",0.0))
+  }
+ }
  suspend fun candles(s:AppSettings,session:AngelSession,token:String)=withContext(Dispatchers.IO){
   val f=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");val to=LocalDateTime.now();val from=to.minusDays(30)
   val body=JSONObject().put("exchange","NSE").put("symboltoken",token).put("interval","FIFTEEN_MINUTE").put("fromdate",from.format(f)).put("todate",to.format(f)).toString().toRequestBody(JSON)
