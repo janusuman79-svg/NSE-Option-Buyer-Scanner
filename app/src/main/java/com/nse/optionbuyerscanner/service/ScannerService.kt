@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.first
 
 class ScannerService:Service(){
  private val job=SupervisorJob();private val scope=CoroutineScope(job+Dispatchers.IO);private val angel=AngelOneClient();private val tg=TelegramClient()
- override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 5 • Trend + SMI reversal").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
+ override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 6 • signal funnel diagnostics").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
  private suspend fun scan(){val nm=getSystemService(NotificationManager::class.java);try{
   val s=SettingsStore(this).flow.first();status(nm,"Angel One login…");val session=angel.login(s);val stocks=angel.loadFnoStocks()
-  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 5 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
+  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 6 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
   val rel=stocks.firstOrNull{it.name=="RELIANCE"}
   if(rel==null)tg.send(s.telegramToken,s.telegramChatId,"⚠️ RELIANCE not found in F&O universe")
   else try{
@@ -26,12 +26,16 @@ class ScannerService:Service(){
     }else "🔬 RELIANCE diagnostic\nCandles: ${c.size}\nOldest: ${java.time.Instant.ofEpochMilli(c.first().time)}\nNewest: ${java.time.Instant.ofEpochMilli(c.last().time)}\nLatest: ${"%.2f".format(last.close)}\nInsufficient history: strategy requires 205 candles."
     tg.send(s.telegramToken,s.telegramChatId,msg)}
   }catch(e:Exception){tg.send(s.telegramToken,s.telegramChatId,"❌ RELIANCE candle error\n${e.message?.take(300)}")}
-  var attempted=0;var success=0;var failed=0;var valid=0;var call=0;var put=0;val errors=ArrayList<String>()
+  var attempted=0;var success=0;var failed=0;var valid=0;var call=0;var put=0;var smiLow75=0;var smiLow85=0;var smiHigh75=0;var smiHigh85=0;var lowRsi=0;var highRsi=0;var bullConfirm=0;var bearConfirm=0;var trendCallReady=0;var trendPutReady=0;var volumeReady=0;val oversold=ArrayList<Pair<String,Double>>();val overbought=ArrayList<Pair<String,Double>>();val errors=ArrayList<String>()
   for(x in stocks){if(!currentCoroutineContext().isActive)break;attempted++
-   try{val c=angel.candles(s,session,x.token);success++;if(c.size>=205){valid++;val sig=StrategyEngine.evaluate(x.name,c);when(sig?.side){Side.CALL->{call++;sendSignal(s,sig)};Side.PUT->{put++;sendSignal(s,sig)};null->{}}}}
+   try{val c=angel.candles(s,session,x.token);success++;if(c.size>=205){valid++;val closes=c.map{it.close};val last=c.last();val prev=c[c.lastIndex-1];val e13=Indicators.ema(closes,13).last();val e48=Indicators.ema(closes,48).last();val e200=Indicators.ema(closes,200).last();val rsi=Indicators.rsi(closes);val smi=Indicators.smi(c);val vw=Indicators.vwap(c.takeLast(30));val avgVol=c.takeLast(20).dropLast(1).map{it.volume}.average();val volOk=avgVol>0&&last.volume>=avgVol*1.10;if(smi<=-75){smiLow75++;oversold.add(x.name to smi)};if(smi<=-85)smiLow85++;if(smi>=75){smiHigh75++;overbought.add(x.name to smi)};if(smi>=85)smiHigh85++;if(rsi<=40)lowRsi++;if(rsi>=60)highRsi++;if(last.close>last.open&&last.close>prev.close)bullConfirm++;if(last.close<last.open&&last.close<prev.close)bearConfirm++;if(last.close>e200&&e13>e48&&last.close>vw&&rsi>=52)trendCallReady++;if(last.close<e200&&e13<e48&&last.close<vw&&rsi<=48)trendPutReady++;if(volOk)volumeReady++;val sig=StrategyEngine.evaluate(x.name,c);when(sig?.side){Side.CALL->{call++;sendSignal(s,sig)};Side.PUT->{put++;sendSignal(s,sig)};null->{}}}}
    catch(e:Exception){failed++;if(errors.size<10)errors.add("${x.name}: ${e.message?.take(100)}")}
    status(nm,"$attempted/${stocks.size} • OK $success • Fail $failed • Signals ${call+put}");delay(450)}
-  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 5 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put")
+  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 6 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put\n\n📊 FUNNEL\nSMI ≤ -75: $smiLow75 | ≤ -85: $smiLow85\nSMI ≥ +75: $smiHigh75 | ≥ +85: $smiHigh85\nRSI ≤ 40: $lowRsi | RSI ≥ 60: $highRsi\nBull candle confirms: $bullConfirm\nBear candle confirms: $bearConfirm\nTrend CALL pre-volume: $trendCallReady\nTrend PUT pre-volume: $trendPutReady\nVolume ≥1.10x avg: $volumeReady")
+  val os=oversold.sortedBy{it.second}.take(10).joinToString("\n"){it.first+": SMI "+String.format("%.1f",it.second)}
+  val ob=overbought.sortedByDescending{it.second}.take(10).joinToString("\n"){it.first+": SMI "+String.format("%.1f",it.second)}
+  if(os.isNotBlank())tg.send(s.telegramToken,s.telegramChatId,"🔴 Top SMI oversold watchlist\n$os")
+  if(ob.isNotBlank())tg.send(s.telegramToken,s.telegramChatId,"🟢 Top SMI overbought watchlist\n$ob")
   if(errors.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"⚠️ First candle errors:\n"+errors.joinToString("\n"))
   status(nm,"Complete • OK $success • Fail $failed • Signals ${call+put}")
  }catch(e:Exception){status(nm,"Error: ${e.message?.take(80)}")}}
