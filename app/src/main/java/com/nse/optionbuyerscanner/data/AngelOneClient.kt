@@ -4,6 +4,8 @@ import com.nse.optionbuyerscanner.domain.Candle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDateTime
@@ -50,7 +52,7 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
   http.newCall(Request.Builder().url("$base/rest/secure/angelbroking/historical/v1/getCandleData").headers(h).post(body).build()).execute().use{r->
    val raw=r.body?.string().orEmpty();if(!r.isSuccessful)error("Candle HTTP ${r.code}")
    val j=JSONObject(raw);if(!j.optBoolean("status"))error(j.optString("message","Candle failed"));val a=j.optJSONArray("data")?:return@use emptyList()
-   List(a.length()){i->val q=a.getJSONArray(i);Candle(q.optString(0),q.optDouble(1),q.optDouble(2),q.optDouble(3),q.optDouble(4),q.optDouble(5))}
+   List(a.length()){i->val q=a.getJSONArray(i);Candle(System.currentTimeMillis(),q.optDouble(1),q.optDouble(2),q.optDouble(3),q.optDouble(4),q.optDouble(5))}
   }
  }
 
