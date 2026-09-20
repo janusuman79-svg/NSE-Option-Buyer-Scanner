@@ -11,20 +11,10 @@ import kotlinx.coroutines.flow.first
 
 class ScannerService:Service(){
  private val job=SupervisorJob();private val scope=CoroutineScope(job+Dispatchers.IO);private val angel=AngelOneClient();private val tg=TelegramClient()
- override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 13 • option master diagnostic").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
+ override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 14 • corrected ATM option mapping").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
  private suspend fun scan(){val nm=getSystemService(NotificationManager::class.java);try{
   val s=SettingsStore(this).flow.first();status(nm,"Angel One login…");val session=angel.login(s);val stocks=angel.loadFnoStocks();val options=angel.loadStockOptions()
-   val infyOpts=options.filter{it.name=="INFY"}.take(12)
-   val optDiag=buildString {
-    append("🧬 Build 13 OPTION MASTER DIAGNOSTIC\n")
-    append("Total OPTSTK parsed: ${options.size}\n")
-    append("INFY rows: ${options.count{it.name=="INFY"}}\n")
-    infyOpts.forEach{ o->
-     append("${o.symbol} | expiry=[${o.expiry}] | rawStrike=[${o.rawStrike}] | parsed=${o.strike} | type=${o.optionType} | token=${o.token} | lot=${o.lotSize}\n")
-    }
-   }
-   tg.send(s.telegramToken,s.telegramChatId,optDiag)
-  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 13 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
+  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 14 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
   val rel=stocks.firstOrNull{it.name=="RELIANCE"}
   if(rel==null)tg.send(s.telegramToken,s.telegramChatId,"⚠️ RELIANCE not found in F&O universe")
   else try{
@@ -45,7 +35,7 @@ class ScannerService:Service(){
    try{val c=angel.candles(s,session,x.token);success++;if(c.size>=205){valid++;val cc=Indicators.completed(c);if(cc.size<205)continue;val closes=cc.map{it.close};val last=cc.last();val prev=cc[cc.lastIndex-1];val e13=Indicators.ema(closes,13).last();val e48=Indicators.ema(closes,48).last();val e200=Indicators.ema(closes,200).last();val rsi=Indicators.rsi(closes);val smi=Indicators.smi(cc);val vw=Indicators.vwap(cc.takeLast(30));val avgVol=cc.dropLast(1).takeLast(20).map{it.volume}.average();val volOk=avgVol>0&&last.volume>=avgVol*1.10;if(smi<=-75){smiLow75++;oversold.add(x.name to smi)};if(smi<=-85)smiLow85++;if(smi>=75){smiHigh75++;overbought.add(x.name to smi)};if(smi>=85)smiHigh85++;if(rsi<=40)lowRsi++;if(rsi>=60)highRsi++;if(last.close>last.open&&last.close>prev.close)bullConfirm++;if(last.close<last.open&&last.close<prev.close)bearConfirm++;if(last.close>e200&&e13>e48&&last.close>vw&&rsi>=52)trendCallReady++;if(last.close<e200&&e13<e48&&last.close<vw&&rsi<=48)trendPutReady++;if(volOk)volumeReady++;val sig=StrategyEngine.evaluate(x.name,c);when(sig?.side){Side.CALL->{call++;candidates.add(sig)};Side.PUT->{put++;candidates.add(sig)};null->{}}}}
    catch(e:Exception){failed++;if(errors.size<10)errors.add("${x.name}: ${e.message?.take(100)}")}
    status(nm,"$attempted/${stocks.size} • OK $success • Fail $failed • Signals ${call+put}");delay(450)}
-  val topCalls=candidates.filter{it.side==Side.CALL}.sortedByDescending{it.score}.take(5);val topPuts=candidates.filter{it.side==Side.PUT}.sortedByDescending{it.score}.take(5);if(topCalls.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"🏆 TOP CALL CANDIDATES");topCalls.forEach{sendSignalWithOption(s,session,options,it)};if(topPuts.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"🏆 TOP PUT CANDIDATES");topPuts.forEach{sendSignalWithOption(s,session,options,it)};tg.send(s.telegramToken,s.telegramChatId,"✅ Build 13 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put\n\n📊 FUNNEL\nSMI ≤ -75: $smiLow75 | ≤ -85: $smiLow85\nSMI ≥ +75: $smiHigh75 | ≥ +85: $smiHigh85\nRSI ≤ 40: $lowRsi | RSI ≥ 60: $highRsi\nBull candle confirms: $bullConfirm\nBear candle confirms: $bearConfirm\nTrend CALL pre-volume: $trendCallReady\nTrend PUT pre-volume: $trendPutReady\nVolume ≥1.10x avg: $volumeReady")
+  val topCalls=candidates.filter{it.side==Side.CALL}.sortedByDescending{it.score}.take(5);val topPuts=candidates.filter{it.side==Side.PUT}.sortedByDescending{it.score}.take(5);if(topCalls.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"🏆 TOP CALL CANDIDATES");topCalls.forEach{sendSignalWithOption(s,session,options,it)};if(topPuts.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"🏆 TOP PUT CANDIDATES");topPuts.forEach{sendSignalWithOption(s,session,options,it)};tg.send(s.telegramToken,s.telegramChatId,"✅ Build 14 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put\n\n📊 FUNNEL\nSMI ≤ -75: $smiLow75 | ≤ -85: $smiLow85\nSMI ≥ +75: $smiHigh75 | ≥ +85: $smiHigh85\nRSI ≤ 40: $lowRsi | RSI ≥ 60: $highRsi\nBull candle confirms: $bullConfirm\nBear candle confirms: $bearConfirm\nTrend CALL pre-volume: $trendCallReady\nTrend PUT pre-volume: $trendPutReady\nVolume ≥1.10x avg: $volumeReady")
   val os=oversold.sortedBy{it.second}.take(10).joinToString("\n"){it.first+": SMI "+String.format("%.1f",it.second)}
   val ob=overbought.sortedByDescending{it.second}.take(10).joinToString("\n"){it.first+": SMI "+String.format("%.1f",it.second)}
   if(os.isNotBlank())tg.send(s.telegramToken,s.telegramChatId,"🔴 Top SMI oversold watchlist\n$os")
@@ -56,8 +46,8 @@ class ScannerService:Service(){
  private suspend fun optionLine(s:AppSettings,session:AngelSession,options:List<AngelOption>,x:Signal):String{
   val typ=if(x.side==Side.CALL)"CE" else "PE";val pool=options.filter{it.name==x.symbol&&it.optionType==typ}
   if(pool.isEmpty())return "Option: no $typ contract found"
-  val fmt=java.time.format.DateTimeFormatter.ofPattern("ddMMMyyyy",java.util.Locale.ENGLISH);val today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
-  val valid=pool.mapNotNull{o->try{Pair(o,java.time.LocalDate.parse(o.expiry.uppercase(),fmt))}catch(_:Exception){null}}.filter{it.second>=today}
+  val fmt=java.time.format.DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("ddMMMyyyy").toFormatter(java.util.Locale.ENGLISH);val today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+  val valid=pool.mapNotNull{o->try{Pair(o,java.time.LocalDate.parse(o.expiry.trim(),fmt))}catch(_:Exception){null}}.filter{it.second>=today}
   if(valid.isEmpty())return "Option: no valid future expiry"
   val exp=valid.minByOrNull{it.second}!!.second;val same=valid.filter{it.second==exp}.map{it.first}
   val atm=same.minByOrNull{kotlin.math.abs(it.strike-x.entry)}?:return "Option: ATM not found"

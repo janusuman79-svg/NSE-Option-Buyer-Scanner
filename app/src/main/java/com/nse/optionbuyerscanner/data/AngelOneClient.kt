@@ -55,7 +55,7 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
    for(i in 0 until a.length()){val x=a.getJSONObject(i)
     if(x.optString("exch_seg")=="NFO"&&x.optString("instrumenttype")=="OPTSTK"){
      val sym=x.optString("symbol");val typ=when{sym.endsWith("CE")->"CE";sym.endsWith("PE")->"PE";else->""}
-     val raw=x.optDouble("strike",Double.NaN);val strike=if(raw.isFinite()&&raw>100000)raw/100.0 else raw
+     val raw=x.optDouble("strike",Double.NaN);val strike=if(raw.isFinite())raw/100.0 else raw
      if(typ.isNotBlank()&&strike.isFinite()&&strike>0)out.add(AngelOption(x.optString("token"),sym,x.optString("name").uppercase(),x.optString("expiry"),strike,typ,x.optInt("lotsize",1),x.optString("strike")))
     }
    };out
