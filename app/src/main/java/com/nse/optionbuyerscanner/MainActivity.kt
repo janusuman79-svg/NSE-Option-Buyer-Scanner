@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.nse.optionbuyerscanner.data.*
 import com.nse.optionbuyerscanner.service.ScannerService
 import kotlinx.coroutines.launch
+@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity:ComponentActivity(){ override fun onCreate(b:Bundle?){super.onCreate(b);setContent{MaterialTheme(colorScheme=darkColorScheme()){App()}}}
  @Composable fun App(){val store=remember{SettingsStore(this)}; val saved by store.flow.collectAsState(initial=AppSettings()); var s by remember(saved){mutableStateOf(saved)}; val scope=rememberCoroutineScope(); var running by remember{mutableStateOf(false)}
   Scaffold(topBar={TopAppBar(title={Text("NSE Option Buyer Scanner")})}){pad->Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
