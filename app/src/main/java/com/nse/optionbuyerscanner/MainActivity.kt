@@ -1,4 +1,5 @@
-@Composable fun Field(label:String,v:String,secret:Boolean=false,on:(String)->Unit){OutlinedTextField(v,on,{},{},label={Text(label)},visualTransformation=if(secret)PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,modifier=Modifier.fillMaxWidth())}import android.content.*
+package com.nse.optionbuyerscanner
+import android.content.*
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
