@@ -17,7 +17,7 @@ import kotlin.math.pow
 
 data class AngelSession(val jwt:String,val refresh:String,val feed:String)
 data class AngelInstrument(val token:String,val symbol:String,val name:String)
-data class AngelOption(val token:String,val symbol:String,val name:String,val expiry:String,val strike:Double,val optionType:String,val lotSize:Int)
+data class AngelOption(val token:String,val symbol:String,val name:String,val expiry:String,val strike:Double,val optionType:String,val lotSize:Int,val rawStrike:String="")
 data class OptionQuote(val ltp:Double,val volume:Double,val openInterest:Double)
 
 class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
@@ -56,7 +56,7 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
     if(x.optString("exch_seg")=="NFO"&&x.optString("instrumenttype")=="OPTSTK"){
      val sym=x.optString("symbol");val typ=when{sym.endsWith("CE")->"CE";sym.endsWith("PE")->"PE";else->""}
      val raw=x.optDouble("strike",Double.NaN);val strike=if(raw.isFinite()&&raw>100000)raw/100.0 else raw
-     if(typ.isNotBlank()&&strike.isFinite()&&strike>0)out.add(AngelOption(x.optString("token"),sym,x.optString("name").uppercase(),x.optString("expiry"),strike,typ,x.optInt("lotsize",1)))
+     if(typ.isNotBlank()&&strike.isFinite()&&strike>0)out.add(AngelOption(x.optString("token"),sym,x.optString("name").uppercase(),x.optString("expiry"),strike,typ,x.optInt("lotsize",1),x.optString("strike")))
     }
    };out
   }
