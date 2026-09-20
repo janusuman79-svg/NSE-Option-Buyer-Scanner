@@ -54,12 +54,16 @@ class ScannerService:Service(){
   return try{val q=angel.optionQuote(s,session,atm);if(q.ltp<=0)"Option: ${atm.symbol} | Exp ${atm.expiry} | Strike ${"%.2f".format(atm.strike)} $typ | LTP unavailable" else "Option: ${atm.symbol} | Exp ${atm.expiry} | Strike ${"%.2f".format(atm.strike)} $typ | LTP ${"%.2f".format(q.ltp)} | Lot ${atm.lotSize} | Vol ${"%.0f".format(q.volume)} | OI ${"%.0f".format(q.openInterest)}"}catch(e:Exception){"Option: ${atm.symbol} | quote error ${e.message?.take(80)}"}
  }
  private suspend fun sendSignalWithOption(s:AppSettings,session:AngelSession,options:List<AngelOption>,x:Signal){
-  val opt=optionLine(s,session,options,x);tg.send(s.telegramToken,s.telegramChatId,"🚨 ${x.side} • ${x.symbol}
-Underlying ${"%.2f".format(x.entry)}
-$opt
-SL ${"%.2f".format(x.stop)} | T1 ${"%.2f".format(x.target1)} | T2 ${"%.2f".format(x.target2)}
-Score ${x.score}/100
-"+x.reasons.joinToString(" • "))
+  val opt=optionLine(s,session,options,x)
+  val msg=buildString {
+   append("🚨 ${x.side} • ${x.symbol}\n")
+   append("Underlying ${"%.2f".format(x.entry)}\n")
+   append("$opt\n")
+   append("SL ${"%.2f".format(x.stop)} | T1 ${"%.2f".format(x.target1)} | T2 ${"%.2f".format(x.target2)}\n")
+   append("Score ${x.score}/100\n")
+   append(x.reasons.joinToString(" • "))
+  }
+  tg.send(s.telegramToken,s.telegramChatId,msg)
  }
  private fun sendSignal(s:AppSettings,x:Signal){tg.send(s.telegramToken,s.telegramChatId,"🚨 ${x.side} • ${x.symbol}\nUnderlying ${"%.2f".format(x.entry)}\nSL ${"%.2f".format(x.stop)} | T1 ${"%.2f".format(x.target1)} | T2 ${"%.2f".format(x.target2)}\nScore ${x.score}/100\n"+x.reasons.joinToString(" • "))}
  private fun status(nm:NotificationManager,t:String){nm.notify(101,NotificationCompat.Builder(this,"scanner").setContentTitle("NSE Option Buyer Scanner").setContentText(t).setSmallIcon(android.R.drawable.ic_menu_search).setOngoing(true).build())}
