@@ -8,80 +8,50 @@ import com.nse.optionbuyerscanner.data.*
 import com.nse.optionbuyerscanner.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import java.time.*
+
+data class Pick(val option:AngelOption,val quote:OptionQuote,val spread:Double,val distance:Double)
 
 class ScannerService:Service(){
  private val job=SupervisorJob();private val scope=CoroutineScope(job+Dispatchers.IO);private val angel=AngelOneClient();private val tg=TelegramClient()
- override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 15 • option quality filter").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
- private suspend fun scan(){val nm=getSystemService(NotificationManager::class.java);try{
-  val s=SettingsStore(this).flow.first();status(nm,"Angel One login…");val session=angel.login(s);val stocks=angel.loadFnoStocks();val options=angel.loadStockOptions()
-  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 15 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
-  val rel=stocks.firstOrNull{it.name=="RELIANCE"}
-  if(rel==null)tg.send(s.telegramToken,s.telegramChatId,"⚠️ RELIANCE not found in F&O universe")
-  else try{
-   val c=angel.candles(s,session,rel.token)
-   if(c.isEmpty())tg.send(s.telegramToken,s.telegramChatId,"⚠️ RELIANCE candle request returned 0 candles")
-   else{val cc=Indicators.completed(c);val closes=cc.map{it.close};val last=cc.last()
-    val last3=cc.takeLast(3).joinToString("\n"){z->"${java.time.Instant.ofEpochMilli(z.time)} O=${"%.2f".format(z.open)} H=${"%.2f".format(z.high)} L=${"%.2f".format(z.low)} C=${"%.2f".format(z.close)} V=${"%.0f".format(z.volume)}"}
-    val av=cc.dropLast(1).takeLast(20).map{it.volume}.average()
-    val vr=if(av>0)last.volume/av else 0.0
-    tg.send(s.telegramToken,s.telegramChatId,"🧪 Last 3 COMPLETED candles\n$last3\n20-candle avg vol: ${"%.0f".format(av)}\nVolume ratio: ${"%.2f".format(vr)}x")
-    val msg=if(cc.size>=205){val e13=Indicators.ema(closes,13).last();val e48=Indicators.ema(closes,48).last();val e200=Indicators.ema(closes,200).last();val rsi=Indicators.rsi(closes);val smi=Indicators.smi(cc);val atr=Indicators.atr(cc);val vw=Indicators.vwap(cc.takeLast(30));val sig=StrategyEngine.evaluate("RELIANCE",c)
-     "🔬 RELIANCE diagnostic\nRaw candles: ${c.size}\nUsable completed: ${cc.size}\nOldest: ${java.time.Instant.ofEpochMilli(c.first().time)}\nNewest: ${java.time.Instant.ofEpochMilli(c.last().time)}\nLatest: ${"%.2f".format(last.close)}\nEMA13/48/200: ${"%.2f".format(e13)} / ${"%.2f".format(e48)} / ${"%.2f".format(e200)}\nVWAP: ${"%.2f".format(vw)}\nRSI: ${"%.1f".format(rsi)} | SMI: ${"%.1f".format(smi)} | ATR: ${"%.2f".format(atr)}\nSignal: ${sig?.side ?: "NONE"}"
-    }else "🔬 RELIANCE diagnostic\nRaw candles: ${c.size}\nUsable completed: ${cc.size}\nOldest: ${java.time.Instant.ofEpochMilli(c.first().time)}\nNewest: ${java.time.Instant.ofEpochMilli(c.last().time)}\nLatest: ${"%.2f".format(last.close)}\nInsufficient history: strategy requires 205 candles."
-    tg.send(s.telegramToken,s.telegramChatId,msg)}
-  }catch(e:Exception){tg.send(s.telegramToken,s.telegramChatId,"❌ RELIANCE candle error\n${e.message?.take(300)}")}
-  var attempted=0;var success=0;var failed=0;var valid=0;var call=0;var put=0;val candidates=ArrayList<Signal>();var smiLow75=0;var smiLow85=0;var smiHigh75=0;var smiHigh85=0;var lowRsi=0;var highRsi=0;var bullConfirm=0;var bearConfirm=0;var trendCallReady=0;var trendPutReady=0;var volumeReady=0;val oversold=ArrayList<Pair<String,Double>>();val overbought=ArrayList<Pair<String,Double>>();val errors=ArrayList<String>()
-  for(x in stocks){if(!currentCoroutineContext().isActive)break;attempted++
-   try{val c=angel.candles(s,session,x.token);success++;if(c.size>=205){valid++;val cc=Indicators.completed(c);if(cc.size<205)continue;val closes=cc.map{it.close};val last=cc.last();val prev=cc[cc.lastIndex-1];val e13=Indicators.ema(closes,13).last();val e48=Indicators.ema(closes,48).last();val e200=Indicators.ema(closes,200).last();val rsi=Indicators.rsi(closes);val smi=Indicators.smi(cc);val vw=Indicators.vwap(cc.takeLast(30));val avgVol=cc.dropLast(1).takeLast(20).map{it.volume}.average();val volOk=avgVol>0&&last.volume>=avgVol*1.10;if(smi<=-75){smiLow75++;oversold.add(x.name to smi)};if(smi<=-85)smiLow85++;if(smi>=75){smiHigh75++;overbought.add(x.name to smi)};if(smi>=85)smiHigh85++;if(rsi<=40)lowRsi++;if(rsi>=60)highRsi++;if(last.close>last.open&&last.close>prev.close)bullConfirm++;if(last.close<last.open&&last.close<prev.close)bearConfirm++;if(last.close>e200&&e13>e48&&last.close>vw&&rsi>=52)trendCallReady++;if(last.close<e200&&e13<e48&&last.close<vw&&rsi<=48)trendPutReady++;if(volOk)volumeReady++;val sig=StrategyEngine.evaluate(x.name,c);when(sig?.side){Side.CALL->{call++;candidates.add(sig)};Side.PUT->{put++;candidates.add(sig)};null->{}}}}
-   catch(e:Exception){failed++;if(errors.size<10)errors.add("${x.name}: ${e.message?.take(100)}")}
-   status(nm,"$attempted/${stocks.size} • OK $success • Fail $failed • Signals ${call+put}");delay(450)}
-  val topCalls=candidates.filter{it.side==Side.CALL}.sortedByDescending{it.score}.take(5);val topPuts=candidates.filter{it.side==Side.PUT}.sortedByDescending{it.score}.take(5);if(topCalls.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"🏆 TOP CALL CANDIDATES");topCalls.forEach{sendSignalWithOption(s,session,options,it)};if(topPuts.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"🏆 TOP PUT CANDIDATES");topPuts.forEach{sendSignalWithOption(s,session,options,it)};tg.send(s.telegramToken,s.telegramChatId,"✅ Build 15 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put\n\n📊 FUNNEL\nSMI ≤ -75: $smiLow75 | ≤ -85: $smiLow85\nSMI ≥ +75: $smiHigh75 | ≥ +85: $smiHigh85\nRSI ≤ 40: $lowRsi | RSI ≥ 60: $highRsi\nBull candle confirms: $bullConfirm\nBear candle confirms: $bearConfirm\nTrend CALL pre-volume: $trendCallReady\nTrend PUT pre-volume: $trendPutReady\nVolume ≥1.10x avg: $volumeReady")
-  val os=oversold.sortedBy{it.second}.take(10).joinToString("\n"){it.first+": SMI "+String.format("%.1f",it.second)}
-  val ob=overbought.sortedByDescending{it.second}.take(10).joinToString("\n"){it.first+": SMI "+String.format("%.1f",it.second)}
-  if(os.isNotBlank())tg.send(s.telegramToken,s.telegramChatId,"🔴 Top SMI oversold watchlist\n$os")
-  if(ob.isNotBlank())tg.send(s.telegramToken,s.telegramChatId,"🟢 Top SMI overbought watchlist\n$ob")
-  if(errors.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"⚠️ First candle errors:\n"+errors.joinToString("\n"))
-  status(nm,"Complete • OK $success • Fail $failed • Signals ${call+put}")
- }catch(e:Exception){status(nm,"Error: ${e.message?.take(80)}")}}
- private suspend fun optionLine(s:AppSettings,session:AngelSession,options:List<AngelOption>,x:Signal):String{
-  val typ=if(x.side==Side.CALL)"CE" else "PE"
-  val pool=options.filter{it.name==x.symbol&&it.optionType==typ}
-  if(pool.isEmpty())return "Option: no $typ contract found"
-  val fmt=java.time.format.DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("ddMMMyyyy").toFormatter(java.util.Locale.ENGLISH)
-  val today=java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
-  val valid=pool.mapNotNull{o->try{Pair(o,java.time.LocalDate.parse(o.expiry.trim(),fmt))}catch(_:Exception){null}}.filter{it.second>=today}
-  if(valid.isEmpty())return "Option: no valid future expiry"
-  val exp=valid.minByOrNull{it.second}!!.second
-  val same=valid.filter{it.second==exp}.map{it.first}
-  val atm=same.minByOrNull{kotlin.math.abs(it.strike-x.entry)}?:return "Option: ATM not found"
-  return try{
-   val q=angel.optionQuote(s,session,atm)
-   if(q.ltp<=0) "Option: ${atm.symbol} | LTP unavailable | Quality: REJECT"
-   else{
-    val spreadPct=if(q.bestBid>0&&q.bestAsk>=q.bestBid)100.0*(q.bestAsk-q.bestBid)/((q.bestAsk+q.bestBid)/2.0) else -1.0
-    val liquid=q.volume>=1000.0&&q.openInterest>=1000.0
-    val spreadOk=spreadPct<0.0||spreadPct<=5.0
-    val quality=if(liquid&&spreadOk)"PASS" else "REJECT"
-    val depthText=if(spreadPct>=0) " | Bid ${"%.2f".format(q.bestBid)} | Ask ${"%.2f".format(q.bestAsk)} | Spread ${"%.2f".format(spreadPct)}%" else " | Spread unavailable"
-    "Option: ${atm.symbol} | Exp ${atm.expiry} | Strike ${"%.2f".format(atm.strike)} $typ | LTP ${"%.2f".format(q.ltp)} | Lot ${atm.lotSize} | Vol ${"%.0f".format(q.volume)} | OI ${"%.0f".format(q.openInterest)}$depthText | Quality: $quality"
+ private lateinit var settings:AppSettings;private lateinit var session:AngelSession;private var stocks:List<AngelInstrument> = emptyList();private var options:List<AngelOption> = emptyList()
+ override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Final Build • 15m automatic scanner").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{runLoop()}}
+ private suspend fun runLoop(){
+  val nm=getSystemService(NotificationManager::class.java)
+  try{settings=SettingsStore(this).flow.first();session=angel.login(settings);stocks=angel.loadFnoStocks();options=angel.loadStockOptions();tg.send(settings.telegramToken,settings.telegramChatId,"✅ FINAL BUILD online\nUniverse: ${stocks.size} F&O stocks\n15-minute market-hours scanner active\nSignal-only: no automatic orders")
+   while(currentCoroutineContext().isActive){
+    val now=ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));val weekday=now.dayOfWeek.value in 1..5;val open=now.toLocalTime()>=LocalTime.of(9,15)&&now.toLocalTime()<=LocalTime.of(15,30)
+    if(weekday&&open){scanOnce(nm);delay(msUntilNextQuarter())}else{status(nm,"Waiting for NSE market hours");delay(60000)}
    }
-  }catch(e:Exception){
-   "Option: ${atm.symbol} | quote error ${e.message?.take(80)}"
-  }
+  }catch(e:Exception){status(nm,"Error: ${e.message?.take(80)}");delay(60000)}
  }
- private suspend fun sendSignalWithOption(s:AppSettings,session:AngelSession,options:List<AngelOption>,x:Signal){
-  val opt=optionLine(s,session,options,x)
-  val msg=buildString {
-   append("🚨 ${x.side} • ${x.symbol}\n")
-   append("Underlying ${"%.2f".format(x.entry)}\n")
-   append("$opt\n")
-   append("SL ${"%.2f".format(x.stop)} | T1 ${"%.2f".format(x.target1)} | T2 ${"%.2f".format(x.target2)}\n")
-   append("Score ${x.score}/100\n")
-   append(x.reasons.joinToString(" • "))
-  }
-  tg.send(s.telegramToken,s.telegramChatId,msg)
+ private fun msUntilNextQuarter():Long{val n=ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));val nextMin=((n.minute/15)+1)*15;val x=if(nextMin>=60)n.plusHours(1).withMinute(0).withSecond(20).withNano(0) else n.withMinute(nextMin).withSecond(20).withNano(0);return maxOf(30000,Duration.between(n,x).toMillis())}
+ private suspend fun scanOnce(nm:NotificationManager){
+  val candidates=ArrayList<Signal>();var ok=0;var fail=0
+  for((i,x) in stocks.withIndex()){try{val c=angel.candles(settings,session,x.token);ok++;StrategyEngine.evaluate(x.name,c)?.let{candidates.add(it)}}catch(_:Exception){fail++};status(nm,"${i+1}/${stocks.size} • signals ${candidates.size}");delay(450)}
+  val ranked=candidates.sortedByDescending{it.score}
+  val calls=selectQuality(ranked.filter{it.side==Side.CALL},5);val puts=selectQuality(ranked.filter{it.side==Side.PUT},5)
+  if(calls.isNotEmpty())tg.send(settings.telegramToken,settings.telegramChatId,"🏆 FINAL TOP CALLS")
+  calls.forEach{sendPick(it.first,it.second)}
+  if(puts.isNotEmpty())tg.send(settings.telegramToken,settings.telegramChatId,"🏆 FINAL TOP PUTS")
+  puts.forEach{sendPick(it.first,it.second)}
+  tg.send(settings.telegramToken,settings.telegramChatId,"✅ Scan complete • Data OK $ok • Fail $fail • Raw signals ${candidates.size} • Quality CALL ${calls.size} • PUT ${puts.size}")
+  status(nm,"Complete • CALL ${calls.size} • PUT ${puts.size}")
  }
- private fun sendSignal(s:AppSettings,x:Signal){tg.send(s.telegramToken,s.telegramChatId,"🚨 ${x.side} • ${x.symbol}\nUnderlying ${"%.2f".format(x.entry)}\nSL ${"%.2f".format(x.stop)} | T1 ${"%.2f".format(x.target1)} | T2 ${"%.2f".format(x.target2)}\nScore ${x.score}/100\n"+x.reasons.joinToString(" • "))}
+ private suspend fun selectQuality(xs:List<Signal>,limit:Int):List<Pair<Signal,Pick>>{val out=ArrayList<Pair<Signal,Pick>>();for(x in xs){val p=bestOption(x);if(p!=null){out.add(x to p);if(out.size>=limit)break}};return out}
+ private suspend fun bestOption(x:Signal):Pick?{
+  val typ=if(x.side==Side.CALL)"CE" else "PE";val fmt=java.time.format.DateTimeFormatterBuilder().parseCaseInsensitive().appendPattern("ddMMMyyyy").toFormatter(java.util.Locale.ENGLISH);val today=LocalDate.now(ZoneId.of("Asia/Kolkata"))
+  val valid=options.filter{it.name==x.symbol&&it.optionType==typ}.mapNotNull{o->try{o to LocalDate.parse(o.expiry.trim(),fmt)}catch(_:Exception){null}}.filter{it.second>=today}
+  if(valid.isEmpty())return null;val exp=valid.minOf{it.second};val same=valid.filter{it.second==exp}.map{it.first}.sortedBy{kotlin.math.abs(it.strike-x.entry)}.take(5)
+  val picks=ArrayList<Pick>()
+  for(o in same){try{val q=angel.optionQuote(settings,session,o);if(q.ltp<=0||q.volume<1000||q.openInterest<1000)continue;val sp=if(q.bestBid>0&&q.bestAsk>0&&q.bestAsk>=q.bestBid)100*(q.bestAsk-q.bestBid)/((q.bestAsk+q.bestBid)/2) else 999.0;if(sp<=5.0)picks.add(Pick(o,q,sp,kotlin.math.abs(o.strike-x.entry)))}catch(_:Exception){}}
+  return picks.minWithOrNull(compareBy<Pick>{it.distance}.thenBy{it.spread})
+ }
+ private fun sendPick(x:Signal,p:Pick){
+  val q=p.quote;val entry=if(q.bestAsk>0)q.bestAsk else q.ltp
+  val msg=buildString{append("🚨 ${x.side} • ${x.symbol}\n");append("Underlying ${"%.2f".format(x.entry)}\n");append("Option ${p.option.symbol} | Exp ${p.option.expiry} | Strike ${"%.2f".format(p.option.strike)} | Buy ref/Ask ${"%.2f".format(entry)} | LTP ${"%.2f".format(q.ltp)}\n");append("Bid ${"%.2f".format(q.bestBid)} | Ask ${"%.2f".format(q.bestAsk)} | Spread ${"%.2f".format(p.spread)}% | Vol ${"%.0f".format(q.volume)} | OI ${"%.0f".format(q.openInterest)} | Lot ${p.option.lotSize}\n");append("Underlying SL ${"%.2f".format(x.stop)} | T1 ${"%.2f".format(x.target1)} | T2 ${"%.2f".format(x.target2)}\n");append("Rank ${x.score}/100 • Quality PASS\n");append(x.reasons.joinToString(" • "))}
+  tg.send(settings.telegramToken,settings.telegramChatId,msg)
+ }
  private fun status(nm:NotificationManager,t:String){nm.notify(101,NotificationCompat.Builder(this,"scanner").setContentTitle("NSE Option Buyer Scanner").setContentText(t).setSmallIcon(android.R.drawable.ic_menu_search).setOngoing(true).build())}
  override fun onDestroy(){job.cancel();super.onDestroy()};override fun onBind(i:Intent?):IBinder?=null
 }
