@@ -3,6 +3,14 @@ package com.nse.optionbuyerscanner.domain
 import kotlin.math.*
 
 object Indicators {
+ fun completed(c:List<Candle>,now:Long=System.currentTimeMillis()):List<Candle> =
+  c.sortedBy{it.time}.filter{x->
+   val finished=x.time+15*60*1000L<=now
+   val validPrice=x.open>0&&x.high>0&&x.low>0&&x.close>0
+   val validVolume=x.volume>0
+   finished&&validPrice&&validVolume
+  }
+
  fun ema(v:List<Double>,p:Int):List<Double>{
   if(v.isEmpty())return emptyList()
   val k=2.0/(p+1);val o=MutableList(v.size){v[0]}
