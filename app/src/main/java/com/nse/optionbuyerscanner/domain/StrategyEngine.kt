@@ -2,6 +2,8 @@ package com.nse.optionbuyerscanner.domain
 
 object StrategyEngine {
  fun evaluate(symbol:String,c:List<Candle>):Signal? {
+  if(c.size<206)return null
+  val c=c.sortedBy{it.time}.dropLast(1)
   if(c.size<205)return null
   val closes=c.map{it.close}
   val e13=Indicators.ema(closes,13).last()
