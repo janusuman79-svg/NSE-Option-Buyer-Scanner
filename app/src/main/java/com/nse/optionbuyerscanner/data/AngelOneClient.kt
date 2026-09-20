@@ -47,7 +47,7 @@ class AngelOneClient(private val http:OkHttpClient=OkHttpClient()){
  }
 
  suspend fun candles(s:AppSettings,session:AngelSession,token:String)=withContext(Dispatchers.IO){
-  val f=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");val to=LocalDateTime.now();val from=to.minusDays(10)
+  val f=DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");val to=LocalDateTime.now();val from=to.minusDays(30)
   val body=JSONObject().put("exchange","NSE").put("symboltoken",token).put("interval","FIFTEEN_MINUTE").put("fromdate",from.format(f)).put("todate",to.format(f)).toString().toRequestBody(JSON)
   val h=headers(s.angelApiKey).newBuilder().add("Authorization","Bearer ${session.jwt}").build()
   http.newCall(Request.Builder().url("$base/rest/secure/angelbroking/historical/v1/getCandleData").headers(h).post(body).build()).execute().use{r->
