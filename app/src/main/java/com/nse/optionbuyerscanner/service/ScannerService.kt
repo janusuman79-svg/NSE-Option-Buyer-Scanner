@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.first
 
 class ScannerService:Service(){
  private val job=SupervisorJob();private val scope=CoroutineScope(job+Dispatchers.IO);private val angel=AngelOneClient();private val tg=TelegramClient()
- override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 4 • 30-day history test").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
+ override fun onCreate(){super.onCreate();val id="scanner";getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(id,"F&O Scanner",NotificationManager.IMPORTANCE_LOW));val pi=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE);startForeground(101,NotificationCompat.Builder(this,id).setContentTitle("NSE Option Buyer Scanner").setContentText("Build 5 • Trend + SMI reversal").setSmallIcon(android.R.drawable.ic_menu_search).setContentIntent(pi).build());scope.launch{scan()}}
  private suspend fun scan(){val nm=getSystemService(NotificationManager::class.java);try{
   val s=SettingsStore(this).flow.first();status(nm,"Angel One login…");val session=angel.login(s);val stocks=angel.loadFnoStocks()
-  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 4 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
+  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 5 login OK\nUniverse: ${stocks.size} F&O stocks\nRunning RELIANCE diagnostic…")
   val rel=stocks.firstOrNull{it.name=="RELIANCE"}
   if(rel==null)tg.send(s.telegramToken,s.telegramChatId,"⚠️ RELIANCE not found in F&O universe")
   else try{
@@ -31,7 +31,7 @@ class ScannerService:Service(){
    try{val c=angel.candles(s,session,x.token);success++;if(c.size>=205){valid++;val sig=StrategyEngine.evaluate(x.name,c);when(sig?.side){Side.CALL->{call++;sendSignal(s,sig)};Side.PUT->{put++;sendSignal(s,sig)};null->{}}}}
    catch(e:Exception){failed++;if(errors.size<10)errors.add("${x.name}: ${e.message?.take(100)}")}
    status(nm,"$attempted/${stocks.size} • OK $success • Fail $failed • Signals ${call+put}");delay(450)}
-  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 4 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put")
+  tg.send(s.telegramToken,s.telegramChatId,"✅ Build 5 scan complete\nUniverse: ${stocks.size}\nAttempted: $attempted\nCandle success: $success\nCandle failures: $failed\nValid ≥205 candles: $valid\nCALL signals: $call\nPUT signals: $put")
   if(errors.isNotEmpty())tg.send(s.telegramToken,s.telegramChatId,"⚠️ First candle errors:\n"+errors.joinToString("\n"))
   status(nm,"Complete • OK $success • Fail $failed • Signals ${call+put}")
  }catch(e:Exception){status(nm,"Error: ${e.message?.take(80)}")}}
